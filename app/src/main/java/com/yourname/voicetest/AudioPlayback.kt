@@ -28,7 +28,7 @@ class AudioPlayback {
             .build(),
         bufferSize,
         AudioTrack.MODE_STREAM,
-        AudioTrack.SESSION_ID_GENERATE
+        0
     )
 
     private val chunkQueue = ConcurrentLinkedQueue<ByteArray>()
