@@ -6,10 +6,15 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 class TokenFetcher(private val backendUrl: String, private val appSecret: String) {
 
-    private val client = OkHttpClient()
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        .writeTimeout(10, TimeUnit.SECONDS)
+        .build()
 
     suspend fun fetchToken(): String = withContext(Dispatchers.IO) {
         val request = Request.Builder()
@@ -19,6 +24,9 @@ class TokenFetcher(private val backendUrl: String, private val appSecret: String
             .build()
 
         val response = client.newCall(request).execute()
+        if (!response.isSuccessful) {
+            throw Exception("Server error ${response.code}: ${response.body?.string()}")
+        }
         val body = response.body?.string() ?: throw Exception("Empty token response")
         JSONObject(body).getString("token")
     }
