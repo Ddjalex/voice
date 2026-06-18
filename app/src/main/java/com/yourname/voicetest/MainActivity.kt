@@ -31,11 +31,21 @@ class MainActivity : ComponentActivity() {
     private var micCapture:    MicCapture?        = null
     private var audioPlayback: AudioPlayback?     = null
     private var session:       GeminiLiveSession? = null
+    private var pendingSetStatus: ((String) -> Unit)? = null
+    private var pendingOnError:   ((String) -> Unit)? = null
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) startConversation()
+        if (granted) {
+            pendingSetStatus?.invoke("Fetching token…")
+            startConversation(
+                setStatus = pendingSetStatus ?: {},
+                onError   = pendingOnError ?: {}
+            )
+        } else {
+            pendingOnError?.invoke("Microphone permission denied")
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -95,7 +105,10 @@ class MainActivity : ComponentActivity() {
                                 if (!isActive) {
                                     status = "Connecting…"
                                     isActive = true
-                                    checkPermissionAndStart { status = it }
+                                    checkPermissionAndStart(
+                                        setStatus = { status = it },
+                                        onError = { msg -> status = "Error: $msg"; isActive = false }
+                                    )
                                 } else {
                                     stopConversation()
                                     status = "Idle — tap Start to begin"
@@ -129,21 +142,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun checkPermissionAndStart(setStatus: (String) -> Unit) {
+    private fun checkPermissionAndStart(setStatus: (String) -> Unit, onError: (String) -> Unit) {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             == PackageManager.PERMISSION_GRANTED
         ) {
             setStatus("Fetching token…")
-            startConversation()
+            startConversation(setStatus, onError)
         } else {
+            pendingSetStatus = setStatus
+            pendingOnError = onError
             requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
 
-    private fun startConversation() {
+    private fun startConversation(setStatus: (String) -> Unit, onError: (String) -> Unit) {
         lifecycleScope.launch {
             try {
                 val token = TokenFetcher(backendUrl, appSecret).fetchToken()
+                setStatus("Connected — talk now")
 
                 audioPlayback = AudioPlayback().also { it.start() }
 
@@ -159,6 +175,7 @@ class MainActivity : ComponentActivity() {
                 micCapture?.start()
             } catch (e: Exception) {
                 e.printStackTrace()
+                onError(e.message ?: e.javaClass.simpleName)
             }
         }
     }
